@@ -1,0 +1,16 @@
+# Build artifacts
+bin/
+obj/
+
+# Visual Studio-related files
+.vs/
+
+# Miscellaneous
+/FileContentIndex
+*.nupkg
+*.nuspec
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.qodo

@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Modules\ProgressBar\**" />
+    <EmbeddedResource Remove="Modules\ProgressBar\**" />
+    <None Remove="Modules\ProgressBar\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="MegaBulkUploader.sln.DotSettings" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="cli\" />
+  </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(DOCKER_BUILD)' != 'true'">
+    <Exec Command="xcopy /E /I /Y /C /Q &quot;$(ProjectDir)cli&quot; &quot;$(TargetDir)cli&quot;" />
+  </Target>
+
+  <Target Name="PostPublishCopy" AfterTargets="Publish" Condition="'$(DOCKER_BUILD)' != 'true'">
+    <Exec Command="xcopy /E /I /Y /C /Q &quot;$(ProjectDir)cli&quot; &quot;$(PublishDir)cli&quot;" />
+    
+    <Delete Files="$(PublishDir)$(AssemblyName).exe" />
+
+    <!-- <Exec Command="cd $(ProjectDir) || docker build -t megabulkuploader -f DockerFile ."/> -->
+  </Target>
+</Project>

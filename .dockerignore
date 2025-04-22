@@ -1,0 +1,11 @@
+.vscode/
+*.user
+cli/
+
+*.sln
+*.DotSettings
+*.suo
+*.git
+.vs/
+bin/
+obj/
