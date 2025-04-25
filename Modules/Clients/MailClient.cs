@@ -9,7 +9,6 @@ namespace MegaBulkUploader.Modules.Clients
 {
     public static class MailClient
     {
-        
         public static async Task<T?> GetAsync<T>(string baseUrl, string endPoint, string? auth = null)
         {
             using HttpClient httpClient = new();

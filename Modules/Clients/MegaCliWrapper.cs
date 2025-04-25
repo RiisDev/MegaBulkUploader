@@ -13,7 +13,6 @@ namespace MegaBulkUploader.Modules.Clients
         public static CancellationTokenSource Finished = new();
 
         private readonly int _fileCount;
-        private int _clientFound;
         private int _finished;
         private int _lastProgress;
 
@@ -21,8 +20,7 @@ namespace MegaBulkUploader.Modules.Clients
 
         private readonly string? _token;
 
-        public List<string> ExportedLinks = [];
-
+        private readonly TaskCompletionSource _transfersFinished = new();
 
         public MegaCliWrapper(string authToken, int fileCount)
         {
@@ -30,15 +28,6 @@ namespace MegaBulkUploader.Modules.Clients
             _token = authToken;
 
             KillMegaProcesses();
-
-            Task.Run(async () =>
-            {
-                while (!Finished.IsCancellationRequested)
-                {
-                    await Task.Delay(50);
-                    _clientFound = Process.GetProcesses().Count(x => x.ProcessName.Contains("mega", StringComparison.CurrentCultureIgnoreCase) && x.Id != Environment.ProcessId);
-                }
-            });
         }
 
         public static void KillMegaProcesses(string error = "", bool exit = false)
@@ -71,7 +60,7 @@ namespace MegaBulkUploader.Modules.Clients
         private void ProcessExportedData(string dataActual, ref TaskCompletionSource responseFound)
         {
             Match exportedLink = Match(dataActual, @"(https:\/\/mega\.nz\/folder\/(.*))", RegexOptions.Compiled);
-            ExportedLinks.Add(exportedLink.ToString());
+            Program.Exported.Add(exportedLink.ToString());
             responseFound.TrySetResult();
         }
 
@@ -85,22 +74,141 @@ namespace MegaBulkUploader.Modules.Clients
 
             DeleteCache();
         }
-        public static double GetActiveProgress(string input)
+
+        public record TransferData(string Source, string Destination, double Progress, string Status);
+
+        public static List<TransferData> GetActiveProgress(string input)
         {
+            List<TransferData> transfers = [];
             string[] lines = input.Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries).Skip(1).ToArray();
-            foreach (string line in lines)
+
+            for (int i = lines.Length - 1; i >= 0; i--)
             {
-                if (!line.Contains("ACTIVE")) continue;
+                string line = lines[i];
+                if (!line.Contains("ACTIVE") && !line.Contains("QUEUED")) continue;
 
-                Match match = Match(line, @"(\d+\.\d+)%");
-                if (!match.Success) continue;
+                MatchCollection groupMatch = Matches(line, @"([^*]+)");
+                if (groupMatch.Count <= 0) continue;
 
-                if (double.TryParse(match.Groups[1].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double result))
-                    return result;
+                Match percentMatch = Match(line, @"(\d+\.\d+)%");
+                if (!percentMatch.Success) continue;
+
+                bool percent = double.TryParse(percentMatch.Groups[1].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double percentage);
+                if (!percent) continue;
+
+                transfers.Add(new TransferData(
+                    Source: groupMatch[2].Value, 
+                    Destination: groupMatch[3].Value, 
+                    Progress: percentage, 
+                    Status: groupMatch[5].Value
+                ));
             }
 
-            return 0.0;
+            return transfers;
         }
+
+        public async Task StartTransfersMonitor()
+        {
+            while (!Finished.IsCancellationRequested)
+            {
+                TaskCompletionSource processClosed = new();
+                ProcessStartInfo startInfo = new()
+                {
+                    FileName = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/bash",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    Arguments = $"{(OperatingSystem.IsWindows() ? "/C \"\"" : "-c \"")}"
+                };
+
+                List<string> arguments =
+                [
+                    OperatingSystem.IsWindows()
+                        ? $"{Program.GetCli()}\" transfers"
+                        : $"{Program.GetCli()} transfers",
+                    "--limit=21474836",
+                    "--path-display-size=255",
+                    "--col-separator=*"
+                ];
+
+                startInfo.Arguments += string.Join(" ", arguments).Trim();
+                startInfo.Arguments += "\"\"";
+
+                if (OperatingSystem.IsWindows())
+                {
+                    startInfo.WorkingDirectory = Path.GetDirectoryName(Program.GetCli());
+
+                    if (Process.GetProcessesByName("MEGAcmdServer").Length == 0)
+                    {
+                        Process cmdServer = Process.Start(new ProcessStartInfo
+                        {
+                            FileName = "cmd.exe",
+                            Arguments = "/C \"MEGAcmdServer.exe psa --discard update --auto=off\"",
+                            WorkingDirectory = Path.GetDirectoryName(Program.GetCli()),
+                            RedirectStandardOutput = true,
+                            RedirectStandardInput = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        })!;
+
+                        cmdServer.OutputDataReceived += (_, e) =>
+                        {
+                            Debug.WriteLine(e.Data);
+                            if (e.Data?.Contains("Listening to petitions") ?? false) _windowsCmdServerLoading = false;
+                        };
+
+                        cmdServer.BeginOutputReadLine();
+
+                        while (_windowsCmdServerLoading) await Task.Delay(100);
+                    }
+                }
+
+                Process process = new() { StartInfo = startInfo, EnableRaisingEvents = true, };
+
+                process.Exited += (_, _) => processClosed.SetResult();
+
+                process.Start();
+
+                string output = await process.StandardOutput.ReadToEndAsync();
+                string errorOutput = await process.StandardError.ReadToEndAsync();
+
+                await processClosed.Task;
+
+                Debug.WriteLine(output);
+                Debug.WriteLine(errorOutput);
+
+                if (output.Contains("DESTINYPATH"))
+                {
+                    List<TransferData> currentProgress = GetActiveProgress(output);
+
+                    TransferData? activeData = currentProgress.FirstOrDefault(x => x.Status == "ACTIVE");
+
+                    if (activeData is null) continue;
+
+                    if (activeData.Progress < _lastProgress) _finished++;
+
+                    _lastProgress = (int)activeData.Progress;
+                    _progressBar?.Report((activeData.Progress, _finished + 1, _fileCount));
+                    Debug.WriteLine($"{activeData.Progress} | {_finished + 1}/{_fileCount}");
+
+                    if (_finished >= _fileCount)
+                    {
+                        _transfersFinished.SetResult();
+                        _progressBar?.Dispose();
+                        Console.WriteLine('\n');
+                    }
+                    else
+                    {
+                        await Task.Delay(500);
+                        continue;
+                    }
+                }
+
+                break;
+            }
+        }
+
         public async Task ExecuteCli(string program, string expectedResponse, params string[] args)
         {
             TaskCompletionSource processClosed = new();
@@ -175,52 +283,14 @@ namespace MegaBulkUploader.Modules.Clients
             Debug.WriteLine(output);
             Debug.WriteLine(errorOutput);
 
-            if (program == "transfers")
-            {
-                if (output.Contains("DESTINYPATH"))
-                {
-                    double currentProgress = GetActiveProgress(output);
-
-                    if (currentProgress < _lastProgress)
-                        _finished++;
-
-                    _lastProgress = (int)currentProgress;
-                    _progressBar?.Report((currentProgress, _finished + 1, _fileCount));
-                    Debug.WriteLine($"{currentProgress} | {_finished + 1}/{_fileCount}");
-
-                    if (_finished >= _fileCount)
-                    {
-                        responseFound.TrySetResult();
-                        _progressBar?.Dispose();
-                        Console.WriteLine('\n');
-                    }
-                    else
-                    {
-                        await Task.Delay(500);
-
-                        if (_clientFound >= 3) return;
-
-                        await ExecuteCli(program, expectedResponse, args);
-                    }
-                }
-            }
-            else if(ShouldRetry(program, expectedResponse, output))
+            if(ShouldRetry(program, expectedResponse, output))
             {
                 await Task.Delay(1000);
                 await ExecuteCli(program, expectedResponse, args);
             }
-            else if (output.Contains("Failed to logout"))
-            {
-                KillMegaProcesses("Failed to logout of session, please restart application!", true);
-            }
-            else if (output.Contains("Exported"))
-            {
-                ProcessExportedData(output, ref responseFound);
-            }
-            else if (output.Contains(expectedResponse))
-            {
-                responseFound.TrySetResult();
-            }
+            else if (output.Contains("Failed to logout")) KillMegaProcesses("Failed to logout of session, please restart application!", true);
+            else if (output.Contains("Exported")) ProcessExportedData(output, ref responseFound);
+            else if (output.Contains(expectedResponse)) responseFound.TrySetResult();
 
             process.Dispose();
         }
@@ -241,17 +311,11 @@ namespace MegaBulkUploader.Modules.Clients
                     throw new DirectoryNotFoundException("Failed to find /home directory.");
 
                 foreach (string dir in Directory.GetDirectories("/home"))
-                {
                     if (Directory.Exists($"{dir}/.megaCmd"))
-                    {
                         Directory.Delete($"{dir}/.megaCmd", true);
-                    }
-                }
             }
             else
-            {
                 throw new NotSupportedException("Unsupported OS");
-            }
         }
 
         public async Task<string> ExtractVerificationEmail()
@@ -308,6 +372,15 @@ namespace MegaBulkUploader.Modules.Clients
             megaLogger.LogInformation("Disabling https (Increases upload speed)");
             await ExecuteCli("https", "File transfer now uses HTTP", "off");
 
+            await ExecuteCli("speedlimit", "", "--upload-connections 6");
+
+            _ = Task.Run(async () =>
+            {
+                megaLogger.LogInformation("Monitoring transfers...");
+                _progressBar = new ProgressBar();
+                await StartTransfersMonitor();
+            });
+
             megaLogger.LogInformation("Creating upload queue, this will take a while depending on file count...");
 
             foreach (string file in files)
@@ -325,11 +398,8 @@ namespace MegaBulkUploader.Modules.Clients
                 await ExecuteCli("put", "", "-c", "-q", "--ignore-quota-warn", $"\"{file}\"", $"\"{uploadDirectory}");
             }
 
-            megaLogger.LogInformation("Monitoring transfers...");
-            _progressBar = new ProgressBar();
+            await _transfersFinished.Task;
 
-            await ExecuteCli("transfers", "");
-            
             _progressBar?.Dispose();
 
             megaLogger.LogInformation("Uploading complete!");
@@ -346,7 +416,7 @@ namespace MegaBulkUploader.Modules.Clients
             
             await DoPutUpload(megaLogger, files, directory);
 
-            megaLogger.LogInformation($"Exported Url: {ExportedLinks.Last()}");
+            megaLogger.LogInformation($"Exported Url: {Program.Exported.Last()}");
 
             megaLogger.LogInformation("Cleaning up...");
             await LogoutProper();

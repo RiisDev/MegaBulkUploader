@@ -7,6 +7,8 @@ namespace MegaBulkUploader
 {
     internal class Program
     {
+        public static readonly List<string> Exported = [];
+        
         public static readonly Random Random = new();
         public static string RandomString(int length) { return new string(Enumerable.Repeat("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", length).Select(s => s[Random.Next(s.Length)]).ToArray()); }
         
@@ -44,7 +46,7 @@ namespace MegaBulkUploader
 
             if (OperatingSystem.IsLinux())
             {
-                return "/usr/bin/mega-";
+                return "/usr/bin/mega-exec";
             }
 
             throw new NotSupportedException("Unsupported OS");
@@ -57,7 +59,6 @@ namespace MegaBulkUploader
             logger.LogInformation("Cleaning up...");
             MegaCliWrapper.KillMegaProcesses();
             MegaCliWrapper.DeleteCache();
-            Process.GetCurrentProcess().Kill(true);
         }
 
         static void Main(string[] args)
@@ -69,9 +70,9 @@ namespace MegaBulkUploader
             AppDomain.CurrentDomain.ProcessExit += Cleanup;
             Console.CancelKeyPress += Cleanup;
 
-            if (args.Length == 0 || !Directory.Exists(args[0]))
+            if (args.Length == 0 || (!Directory.Exists(args[0]) && !File.Exists(args[0])))
             {
-                logger.LogError("Invalid directory.");
+                logger.LogError("Invalid directory or file.");
                 return;
             }
 
@@ -92,7 +93,7 @@ namespace MegaBulkUploader
                 }
             }
 
-            _ = Task.Run(() => new Processing().Process(args[0]));
+            _ = Task.Run(() => Processing.Process(args[0]));
 
             while (true) { Console.ReadLine(); }
         }
