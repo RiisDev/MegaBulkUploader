@@ -116,17 +116,36 @@ MIT License — feel free to use, modify, and distribute.
 
 ---
 
+## ⚖️ Legal & Copyright Notices
+
+### MEGAcmd Usage and Attribution
+
+This project makes use of [MEGAcmd](https://github.com/meganz/MEGAcmd), the official command-line interface for MEGA.nz, which is licensed under the [MIT License](https://github.com/meganz/MEGAcmd/blob/master/LICENSE).
+
+> © 2013–present, Mega Limited.  
+> MEGAcmd is © Mega Limited and provided under the MIT License.  
+> Permission is hereby granted, free of charge, to any person obtaining a copy...
+
+#### 🔹 For Windows Users
+
+We **include an unmodified copy** of MEGAcmd for Windows users for convenience.  
+We **do not modify, recompile, or alter** MEGAcmd in any way.  
+> If you do not trust our inclusion, feel free to download the [official](https://mega.io/cmd#download) client and copy the files to the x64/x86 folders.
+All rights, ownership, and credit for MEGAcmd go to its original authors at [Mega Limited](https://mega.nz/).
+
+Users are encouraged to review the MEGAcmd source and license directly at:  
+➡️ https://github.com/meganz/MEGAcmd
+
+#### 🔹 For Linux Users
+We **do not** provide a copy of MEGAcmd, and you must download it yourself from the [official](https://mega.io/cmd#download) page.
+
+---
+
 ## ⚠️ Disclaimer
 
-This project is **not affiliated with, endorsed by, or associated with [MEGA.nz](https://mega.nz/)** in any way.  
-It is a **personal hobby project** created for educational purposes.
-
-Use of this tool is at your own risk. By using it, you acknowledge that:
-
-- You are responsible for complying with MEGA’s [Terms of Service](https://mega.nz/terms).
-- The author assumes **no responsibility** for misuse, abuse, or any consequences (including account bans).
-- This software is provided **as-is**, without any warranties or guarantees of uptime, functionality, or support.
-
-If you are unsure about what is permitted, please refer to MEGA's official documentation and policies.
+- This project is **not affiliated with, endorsed by, or associated with MEGA.nz**.  
+- It is a **personal, hobby project**, developed for educational purposes only.  
+- Use this tool **at your own risk**. The author is not responsible for misuse or violations of MEGA’s [Terms of Service](https://mega.nz/terms).  
+- Bundled components are included purely for user convenience and retain their original licenses and authorship.
 
 ---
