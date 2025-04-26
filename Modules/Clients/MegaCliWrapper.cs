@@ -163,6 +163,8 @@ namespace MegaBulkUploader.Modules.Clients
             }
         }
 
+        private (string, string[]) _loginCache;
+        
         public async Task ExecuteCli(string program, string expectedResponse, params string[] args)
         {
             TaskCompletionSource processClosed = new();
@@ -193,6 +195,8 @@ namespace MegaBulkUploader.Modules.Clients
             if (args.Length == 0) startInfo.Arguments += "\"";
             else if (program == "https" || program == "speedlimit") startInfo.Arguments += "\"";
             else startInfo.Arguments += "\"\"";
+
+            if (program == "login") _loginCache = (args[0], args);
 
             Debug.WriteLine($"{startInfo.FileName} {startInfo.Arguments}");
 
@@ -242,7 +246,14 @@ namespace MegaBulkUploader.Modules.Clients
             Debug.WriteLine(output);
             Debug.WriteLine(errorOutput);
 
-            if(ShouldRetry(program, expectedResponse, output))
+            if (program == "put" && output.Contains("not logged into an account"))
+            {
+                await ExecuteCli("login", "", _loginCache.Item2);
+                await ExecuteCli("whoami", _loginCache.Item1);
+
+                await ExecuteCli(program, expectedResponse, args);
+            }
+            else if(ShouldRetry(program, expectedResponse, output))
             {
                 await Task.Delay(500);
                 await ExecuteCli(program, expectedResponse, args);
