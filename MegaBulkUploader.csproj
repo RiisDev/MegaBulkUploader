@@ -37,7 +37,5 @@
     <Exec Command="xcopy /E /I /Y /C /Q &quot;$(ProjectDir)cli&quot; &quot;$(PublishDir)cli&quot;" />
     
     <Delete Files="$(PublishDir)$(AssemblyName).exe" />
-
-    <!-- <Exec Command="cd $(ProjectDir) || docker build -t megabulkuploader -f DockerFile ."/> -->
   </Target>
 </Project>

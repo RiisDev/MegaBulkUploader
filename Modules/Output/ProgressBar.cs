@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Text;
+using MegaBulkUploader.Modules.Clients;
 
 namespace MegaBulkUploader.Modules.Output
 {
     // Credit to https://gist.github.com/DanielSWolf/0ab6a96899cc5377bf54
 
-    public class ProgressBar : IDisposable, IProgress<(double value, int uploaded, int count)>
+    public class ProgressBar : IDisposable, IProgress<(MegaCliWrapper.TransferData value, int uploaded, int count)>
     {
         private string _reportText = "";
         internal bool FailedStatus;
@@ -31,10 +32,17 @@ namespace MegaBulkUploader.Modules.Output
             }
         }
 
-        public void Report((double value, int uploaded, int count) progress)
+        public void Report((MegaCliWrapper.TransferData value, int uploaded, int count) progress)
         {
-            Interlocked.Exchange(ref _currentProgress, progress.value);
-            _reportText = $"Uploading file {progress.uploaded} of {progress.count}";
+            Interlocked.Exchange(ref _currentProgress, progress.value.Progress);
+
+            string fileName = Path.GetFileName(progress.value.Source);
+
+            _reportText =
+                $"Uploading file {progress.uploaded} of {progress.count}\n" +
+                $"Source     : {fileName}\n" +
+                $"Size       : {progress.value.Size}\n" +
+                $"Destination: {progress.value.Destination}";
         }
 
         private void TimerHandler(object state)
@@ -88,27 +96,21 @@ namespace MegaBulkUploader.Modules.Output
         {
             lock (_lock)
             {
-                int commonPrefixLength = 0;
-                int commonLength = Math.Min(_currentText.Length, text.Length);
+                int oldLines = _currentText.Split('\n').Length;
 
-                while (commonPrefixLength < commonLength && text[commonPrefixLength] == _currentText[commonPrefixLength]) commonPrefixLength++;
-
-                int overlapCount = _currentText.Length - text.Length;
-
-                StringBuilder outputBuilder = new();
-                outputBuilder.Append('\b', _currentText.Length - commonPrefixLength);
-                outputBuilder.Append(text, commonPrefixLength, text.Length - commonPrefixLength);
-
-                if (overlapCount > 0)
+                for (int i = 0; i < oldLines; i++)
                 {
-                    outputBuilder.Append(' ', overlapCount);
-                    outputBuilder.Append('\b', overlapCount);
+                    Console.SetCursorPosition(0, Console.CursorTop - 1);
+                    Console.Write(new string(' ', Console.WindowWidth));
+                    Console.SetCursorPosition(0, Console.CursorTop);
                 }
 
-                Console.Write(outputBuilder);
+                Console.WriteLine(text);
                 _currentText = text;
+                Console.CursorVisible = true;
             }
         }
+
 
         private void ResetTimer()
         {
