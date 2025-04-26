@@ -45,7 +45,7 @@ dotnet MegaBulkUploader.dll <pathToUpload> [options]
 | `--max-size <bytes>`       | `-ms` | Max size (in bytes) per chunk (default: `19327352832` equal to ~20GB)       |
 | `--upload-streams <n>`     | `-us` | Number of parallel upload streams (default: 6, min: 1, max: 6)             |
 | `--output <file>`          | `-o`  | Output log file (default: `Upload.log`)                                    |
-| `--bbcode`                 | `-bb` | Output logs in BBCode format (default: `false`)                            |
+| `--bbcode (Flag)`                 | `-bb` | Output logs in BBCode format (default: `false`)                            |
 | `--bbcode-out <file>`      | `-bo` | BBCode output log file (default: `BbUpload.log`)                           |
 
 ---
