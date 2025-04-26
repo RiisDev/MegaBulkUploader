@@ -148,8 +148,8 @@ namespace MegaBulkUploader.Modules.Clients
                         x.Status.Contains("active", StringComparison.InvariantCultureIgnoreCase) &&
                         x.Progress.ToString(CultureInfo.InvariantCulture) != "100.00");
 
-                if ((activeData is null && _lastProgress == 0) || (activeData is null && _lastProgress <= 99) || (activeData is null && _lastProgress >= 99)) continue;
                 if (activeData is null && _finished >= _fileCount) { _transfersFinished.SetResult(); _progressBar?.Dispose(); break; }
+                if (activeData is null && _finished == _fileCount - 1 && currentProgress.Count == 0) { _transfersFinished.SetResult(); _progressBar?.Dispose(); break; }
                 if (activeData is null) continue;
                 if (activeData.Progress < _lastProgress) _finished++;
 
