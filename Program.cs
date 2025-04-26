@@ -1,6 +1,8 @@
 ﻿using MegaBulkUploader.Modules.Output;
 using MegaBulkUploader.Modules.Clients;
 using MegaBulkUploader.Modules.Misc;
+using System;
+using System.Diagnostics;
 
 namespace MegaBulkUploader
 {
@@ -38,10 +40,6 @@ namespace MegaBulkUploader
             AppDomain.CurrentDomain.ProcessExit += StaticModules.Cleanup;
             Console.CancelKeyPress += StaticModules.Cleanup;
 
-#if DEBUG
-            args = ["."];
-#endif
-
             if (args.Length == 0) args = ["--help"];
 
             CliParse parser = new(args, aliases: new Dictionary<string, string>
@@ -51,7 +49,7 @@ namespace MegaBulkUploader
                 {"ms", "max-size"},
                 {"us", "upload-streams"},
                 {"o", "output"},
-                {"bb", "bbcode "},
+                {"bb", "bbcode"},
                 {"bo", "bbcode-out"}
             });
 
@@ -86,7 +84,7 @@ namespace MegaBulkUploader
                 }
             }
 #endif
-
+            
             _ = Task.Run(() => FileSystem.Process(new FileSystem.Settings(
                 Path: args[0],
                 SectionIndex: int.Parse(parser.GetArgument("start-index")?.Trim() ?? "0"),
@@ -94,7 +92,7 @@ namespace MegaBulkUploader
                 UploadStreams: int.Parse(parser.GetArgument("upload-streams")?.Trim() ?? "6"),
                 OutputFile: parser.GetArgument("output") ?? "Upload.log",
                 BbOutputFile: parser.GetArgument("bbcode-out") ?? "BbUpload.log",
-                OutputBbFile: (parser.GetArgument("bbcode")?.Equals("true", StringComparison.OrdinalIgnoreCase) ?? string.IsNullOrEmpty(parser.GetArgument("bbcode")))
+                OutputBbFile: parser.HasFlag("bbcode") || parser.GetArgument("bbcode")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true
             )));
 
             while (true) { Console.ReadLine(); }
