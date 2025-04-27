@@ -111,6 +111,18 @@ namespace MegaBulkUploader.Modules.Clients
         [SuppressMessage("ReSharper", "RedundantAssignment")] // Leave this
         public static async Task Process(Settings settings)
         {
+            Log logger = new("MegaUploader");
+
+            logger.LogInformation("Using settings:");
+            logger.LogInformation($"- Path: '{settings.Path}'");
+            logger.LogInformation($"- SectionIndex: {settings.SectionIndex}");
+            logger.LogInformation($"- SplitSize: {settings.SplitSize} | {FormatBytes(settings.SplitSize)}");
+            logger.LogInformation($"- UploadStreams: {settings.UploadStreams}");
+            logger.LogInformation($"- OutputFile: '{settings.OutputFile}'");
+            logger.LogInformation($"- BbOutputFile: '{settings.BbOutputFile}'");
+            logger.LogInformation($"- OutputBbFile: {settings.OutputBbFile}");
+
+
             FileAttributes attributes = File.GetAttributes(settings.Path);
             List<List<string>> sections;
 
@@ -124,7 +136,9 @@ namespace MegaBulkUploader.Modules.Clients
             }
 
             string megaDirectory = Path.GetFileName(settings.Path.TrimEnd(Path.DirectorySeparatorChar));
-            long totalDirectoryBytes = new DirectoryInfo(settings.Path).GetDirectorySize();
+
+            long totalDirectoryBytes = attributes.HasFlag(FileAttributes.Directory) ? new DirectoryInfo(settings.Path).GetDirectorySize() : new FileInfo(settings.Path).Length;
+
             int totalFiles = sections.Sum(x => x.Count);
 
             if (settings.OutputBbFile)
@@ -136,7 +150,7 @@ namespace MegaBulkUploader.Modules.Clients
                 index++;
                 if (settings.SectionIndex > index) continue;
 
-                new Log("MegaUploader").LogInformation($"Starting section: {sections.IndexOf(section)+1}");
+                logger.LogInformation($"Starting section: {sections.IndexOf(section)+1}");
 
                 Retry:
                 (string email, string password, string token) = ("", "", "");
@@ -152,7 +166,7 @@ namespace MegaBulkUploader.Modules.Clients
                 catch { new Log("EmailClient").LogError("Failed to register account, retrying..."); goto Retry; }
 
                 try { await wrapper.UploadFiles(section, megaDirectory, settings.UploadStreams); }
-                catch (Exception ex) { new Log("MegaUploader").LogError($"An error occured while uploading files, please report to developer.{ex}"); continue; }
+                catch (Exception ex) { logger.LogError($"An error occured while uploading files, please report to developer.{ex}"); continue; }
 
                 try { await File.AppendAllTextAsync(settings.OutputFile, $"Login: {email} - {password}\nDirectory: {megaDirectory}\nTotal Size:{FormatBytes(GetTotalFileSize(section))}\nTotal Files:{section.Count}\nUrl: {Program.Exported.Last()}\n-{string.Join("\n- ", section.Select(Path.GetFileName))}\n\n"); }
                 catch (Exception ex) { new Log("UploadLog").LogError($"An error occured while writing to log, please report to developer.{ex}"); }

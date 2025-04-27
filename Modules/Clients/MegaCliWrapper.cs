@@ -53,7 +53,7 @@ namespace MegaBulkUploader.Modules.Clients
 
         private void ProcessExportedData(string dataActual, ref TaskCompletionSource responseFound)
         {
-            Match exportedLink = Match(dataActual, @"(https:\/\/mega\.nz\/folder\/(.*))", RegexOptions.Compiled);
+            Match exportedLink = Match(dataActual, @"(https:\/\/mega\.nz\/(folder|file)\/(.*))", RegexOptions.Compiled);
             Program.Exported.Add(exportedLink.ToString().Trim());
             responseFound.TrySetResult();
         }
