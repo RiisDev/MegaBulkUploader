@@ -1,8 +1,6 @@
 ﻿using MegaBulkUploader.Modules.Output;
 using MegaBulkUploader.Modules.Clients;
 using MegaBulkUploader.Modules.Misc;
-using System;
-using System.Diagnostics;
 
 namespace MegaBulkUploader
 {

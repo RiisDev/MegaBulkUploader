@@ -167,6 +167,8 @@ namespace MegaBulkUploader.Modules.Clients
                 await File.AppendAllTextAsync(settings.BbOutputFile, "\n[/SPOILER]");
 
             new Log("Completed").LogInformation($"Exported links: {string.Join(", ", Program.Exported)}");
+            new Log("Completed").LogInformation("Press Ctrl+C to exit!");
+            await MegaCliWrapper.DeleteCache();
         }
     }
 }
