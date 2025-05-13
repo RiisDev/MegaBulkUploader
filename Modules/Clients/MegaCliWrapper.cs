@@ -42,13 +42,17 @@ namespace MegaBulkUploader.Modules.Clients
 
         public bool ShouldRetry(string program, string expectedResponse, string dataActual)
         {
-            bool isWhoAmIRetry = program == "whoami" && !dataActual.Contains(expectedResponse);
+            bool isWhoAmIRetry = program == "whoami" && !dataActual.Contains(expectedResponse, StringComparison.InvariantCultureIgnoreCase);
             
-            bool isErrorResponse = dataActual.Contains(":err:") && !(program == "export" && dataActual.Contains("Nodes not found"));
+            bool isErrorResponse = dataActual.Contains(":err:", StringComparison.InvariantCultureIgnoreCase) && !(program == "export" && dataActual.Contains("Nodes not found", StringComparison.InvariantCultureIgnoreCase));
 
-            bool isServerFailure = dataActual.Contains("Failed to access server");
+            bool isServerFailure = dataActual.Contains("Failed to access server", StringComparison.InvariantCultureIgnoreCase);
 
-            return isWhoAmIRetry || isErrorResponse || isServerFailure;
+            bool isSignupFailure = dataActual.Contains("ERROR reading output", StringComparison.InvariantCultureIgnoreCase);
+            
+            bool isMegaCrashed = dataActual.Contains("process seems to have stopped", StringComparison.InvariantCultureIgnoreCase);
+
+            return isWhoAmIRetry || isErrorResponse || isServerFailure || isSignupFailure || isMegaCrashed;
         }
 
         private void ProcessExportedData(string dataActual, ref TaskCompletionSource responseFound)
@@ -151,7 +155,7 @@ namespace MegaBulkUploader.Modules.Clients
                 if (activeData is null && _finished >= _fileCount) { _transfersFinished.SetResult(); _progressBar?.Dispose(); break; }
                 if (activeData is null && _finished == _fileCount - 1 && currentProgress.Count == 0) { _transfersFinished.SetResult(); _progressBar?.Dispose(); break; }
                 if (activeData is null) continue;
-                if (activeData.Progress < _lastProgress) _finished++;
+                if (_lastProgress - activeData.Progress > 10) _finished++; // Mega likes to lie sometimes, but not a lot
 
                 _lastProgress = (int)activeData.Progress;
                 _progressBar?.Report((activeData, _finished + 1, _fileCount));
@@ -209,7 +213,7 @@ namespace MegaBulkUploader.Modules.Clients
                     Process cmdServer = Process.Start(new ProcessStartInfo
                     {
                         FileName = "cmd.exe",
-                        Arguments = "/C \"MEGAcmdServer.exe psa --discard update --auto=off\"",
+                        Arguments = "/C \"MEGAcmdServer.exe\"",
                         WorkingDirectory = Path.GetDirectoryName(StaticModules.GetCli()),
                         RedirectStandardOutput = true,
                         RedirectStandardInput = true,
@@ -243,8 +247,13 @@ namespace MegaBulkUploader.Modules.Clients
 
             await processClosed.Task;
 
-            Debug.WriteLine(output);
-            Debug.WriteLine(errorOutput);
+            Debug.WriteLine($"Output: {output}");
+            Debug.WriteLine($"Error Output: {errorOutput}");
+
+            output += errorOutput;
+
+            Debug.Write($"RETRY: {ShouldRetry(program, expectedResponse, output)}");
+
 
             if (program == "put" && output.Contains("not logged into an account"))
             {
@@ -323,6 +332,9 @@ namespace MegaBulkUploader.Modules.Clients
             Log megaLogger = new("MegaCli");
             megaLogger.LogInformation("Clearing mega cache...");
             await DeleteCache();
+
+            megaLogger.LogInformation("Disabling auto update...");
+            await ExecuteCli("update", "", "--auto=off");
 
             megaLogger.LogInformation("Creating mega account...");
             await ExecuteCli("signup", "You will receive a confirmation link", $"\"{email}\"", $"\"{password}\"", $"\"{name}");
