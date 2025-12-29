@@ -13,7 +13,8 @@ namespace MegaBulkUploader.Modules.Clients
             int UploadStreams,
             string OutputFile,
             string BbOutputFile,
-            bool OutputBbFile
+            bool OutputBbFile, 
+            bool UseOldUpload
         );
 
         public static long GetTotalFileSize(List<string> filePaths) => (from filePath in filePaths where File.Exists(filePath) select new FileInfo(filePath) into fi select fi.Length).Sum();
@@ -124,14 +125,44 @@ namespace MegaBulkUploader.Modules.Clients
 
 
             FileAttributes attributes = File.GetAttributes(settings.Path);
-            List<List<string>> sections;
+            List<List<string>> sections = [];
 
-            if (attributes.HasFlag(FileAttributes.Directory))
+            if (settings.Path.Contains('|'))
+            {
+                string[] files = settings.Path.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+				long currentSectionSize = 0;
+				List<string> currentSection = [];
+				sections.Add(currentSection);
+
+				foreach (string file in files)
+				{
+					if (!File.Exists(file))
+						throw new FileNotFoundException(
+							$"The specified file '{file}' does not exist.");
+
+					FileInfo fileInfo = new(file);
+
+					if (fileInfo.Length > settings.SplitSize)
+						throw new IOException(
+							$"The file '{file}' exceeds the maximum allowed size of {settings.SplitSize:N0} bytes.");
+
+					if (currentSectionSize + fileInfo.Length > settings.SplitSize)
+					{
+						currentSection = [];
+						sections.Add(currentSection);
+						currentSectionSize = 0;
+					}
+
+					currentSection.Add(file);
+					currentSectionSize += fileInfo.Length;
+				}
+			}
+            else if (attributes.HasFlag(FileAttributes.Directory))
                 sections = GetFolderStructure(settings.Path, settings.SplitSize);
             else
             {
                 if (new FileInfo(settings.Path).Length > settings.SplitSize)
-                    throw new IOException("The file is too large to process. Maximum allowed size is 19 GB.");
+	                throw new IOException("The file is too large to process. Maximum allowed size is 19 GB.");
                 sections = [[settings.Path]];
             }
 
@@ -165,16 +196,31 @@ namespace MegaBulkUploader.Modules.Clients
                 try { await wrapper.Register(email, password, Program.RandomString(5), megaDirectory); }
                 catch { new Log("EmailClient").LogError("Failed to register account, retrying..."); goto Retry; }
 
-                try { await wrapper.UploadFiles(section, megaDirectory, settings.UploadStreams); }
-                catch (Exception ex) { logger.LogError($"An error occured while uploading files, please report to developer.{ex}"); continue; }
+                if (settings.UseOldUpload)
+                {
+	                try { await wrapper.UploadFiles(section, megaDirectory, settings.UploadStreams); }
+	                catch (Exception ex) { logger.LogError($"An error occured while uploading files, please report to developer.{ex}"); continue; }
 
-                try { await File.AppendAllTextAsync(settings.OutputFile, $"Login: {email} - {password}\nDirectory: {megaDirectory}\nTotal Size:{FormatBytes(GetTotalFileSize(section))}\nTotal Files:{section.Count}\nUrl: {Program.Exported.Last()}\n-{string.Join("\n- ", section.Select(Path.GetFileName))}\n\n"); }
-                catch (Exception ex) { new Log("UploadLog").LogError($"An error occured while writing to log, please report to developer.{ex}"); }
+	                try { await File.AppendAllTextAsync(settings.OutputFile, $"Login: {email} - {password}\nDirectory: {megaDirectory}\nTotal Size:{FormatBytes(GetTotalFileSize(section))}\nTotal Files:{section.Count}\nUrl: {Program.Exported.Last()}\n-{string.Join("\n- ", section.Select(Path.GetFileName))}\n\n"); }
+	                catch (Exception ex) { new Log("UploadLog").LogError($"An error occured while writing to log, please report to developer.{ex}"); }
+				}
+                else
+                {
+                    MegaCliWrapper.KillMegaProcesses();
+                    await MegaCliWrapper.DeleteCache();
+					
+                    MegaClientWrapper client = new(wrapper);
+                    await client.Login(email, password);
+                    await client.UploadFiles(megaDirectory, section);
+                }
+				
+                wrapper.Dispose();
 
-                if (!settings.OutputBbFile) continue;
+				if (!settings.OutputBbFile) continue;
 
                 try { await WriteBbLogAsync(Program.Exported.Last(), section, GetTotalFileSize(section), settings.BbOutputFile); }
                 catch (Exception ex) { new Log("UploadLog").LogError($"An error occured while writing to BBlog, please report to developer.{ex}"); }
+
             }
 
             if (settings.OutputBbFile)

@@ -26,6 +26,7 @@ namespace MegaBulkUploader
                                             -o, --output                File to output the upload log (default: Upload.log).
                                             -bb, --bbcode               Output bbCode formatted log (default: false).
                                             -bo, --bbcode-out           File to output bbCode formatted log (default: BbUpload.log).
+                                            -old                        Use old upload method.
 
                                           Example:
                                             dotnet MegaBulkUploader.dll ./my-folder --start-index 0 --max-size 19327352832 --upload-streams 6
@@ -57,7 +58,22 @@ namespace MegaBulkUploader
             logger.LogInformation("Starting Process...");
             logger.LogInformation("Checking for folder to upload...");
 
-            if (!Directory.Exists(args[0]) && !File.Exists(args[0]))
+            string uploadData = args[0];
+
+            bool multiFile = uploadData.Contains('|');
+            if (multiFile)
+            {
+				string[] files = uploadData.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+	            bool anyInvalid = files.Any(x => !File.Exists(x));
+	            if (anyInvalid)
+	            {
+		            logger.LogError("One or more specified files are invalid."); 
+		            return;
+	            }
+			}
+
+            if (!Directory.Exists(args[0]) && (!File.Exists(args[0]) && !multiFile))
             {
                 logger.LogError(args.Length == 0 ? "Path missing to upload." : $"{args[0]} is an invalid directory or file.");
                 return;
@@ -65,23 +81,9 @@ namespace MegaBulkUploader
 
             logger.LogInformation("Checking for CLI Tool...");
 
-            if (!File.Exists(StaticModules.GetCli()))
-            {
-                logger.LogError("MegaCLI not found.");
-                return;
-            }
+            if (!File.Exists(StaticModules.GetCli())) { logger.LogError("MegaCLI not found."); return; }
 
-#if DEBUG
-#else
-            if (OperatingSystem.IsLinux())
-            {
-                if (!StaticModules.IsAdmin())
-                {
-                    logger.LogError("Please run as sudo.");
-                    return;
-                }
-            }
-#endif
+            if (OperatingSystem.IsLinux()) { if (!StaticModules.IsAdmin()) { logger.LogError("Please run as sudo."); return; } }
             
             _ = Task.Run(() => FileSystem.Process(new FileSystem.Settings(
                 Path: args[0],
@@ -90,8 +92,9 @@ namespace MegaBulkUploader
                 UploadStreams: int.Parse(parser.GetArgument("upload-streams")?.Trim() ?? "6"),
                 OutputFile: parser.GetArgument("output") ?? "Upload.log",
                 BbOutputFile: parser.GetArgument("bbcode-out") ?? "BbUpload.log",
-                OutputBbFile: parser.HasFlag("bbcode") || parser.GetArgument("bbcode")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true
-            )));
+                OutputBbFile: parser.HasFlag("bbcode") || parser.GetArgument("bbcode")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true,
+                UseOldUpload: parser.HasFlag("old") || parser.GetArgument("old")?.Equals("true", StringComparison.OrdinalIgnoreCase) == true
+			)));
 
             while (true) { Console.ReadLine(); }
         }

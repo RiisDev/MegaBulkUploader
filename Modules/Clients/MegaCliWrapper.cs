@@ -8,7 +8,7 @@ using static System.Text.RegularExpressions.Regex;
 
 namespace MegaBulkUploader.Modules.Clients
 {
-    public class MegaCliWrapper
+    public class MegaCliWrapper : IDisposable
     {
         private ProgressBar? _progressBar;
 
@@ -196,8 +196,7 @@ namespace MegaBulkUploader.Modules.Clients
 
             startInfo.Arguments += string.Join(" ", arguments).Trim();
 
-            if (args.Length == 0) startInfo.Arguments += "\"";
-            else if (program == "https" || program == "speedlimit") startInfo.Arguments += "\"";
+            if (args.Length == 0 || program == "https" || program == "speedlimit") startInfo.Arguments += "\"";
             else startInfo.Arguments += "\"\"";
 
             if (program == "login") _loginCache = (args[0], args);
@@ -346,16 +345,21 @@ namespace MegaBulkUploader.Modules.Clients
             await ExecuteCli("confirm", "You can login with it now", $"\"{emailVerificationLink}\"", $"\"{email}\"", $"\"{password}");
 
             megaLogger.LogInformation("Signing into mega account...");
-            await ExecuteCli("login", "", $"\"{email}\"", $"\"{password}");
-            await ExecuteCli("whoami", email);
-            
-            KillMegaProcesses(); // I found it had more reliability when resetting the command server, and clear up any extra exec instances
+            await Login(email, password);
+
+			KillMegaProcesses(); // I found it had more reliability when resetting the command server, and clear up any extra exec instances
 
             megaLogger.LogInformation("Successfully created mega account!");
 
         }
 
-        public async Task DoPutUpload(Log megaLogger, IReadOnlyList<string> files, string directory, int uploadStreams)
+        public async Task Login(string email, string password)
+        {
+	        await ExecuteCli("login", "", $"\"{email}\"", $"\"{password}");
+	        await ExecuteCli("whoami", email);
+		}
+
+		public async Task DoPutUpload(Log megaLogger, IReadOnlyList<string> files, string directory, int uploadStreams)
         {
             megaLogger.LogInformation("Disabling https (Increases upload speed)");
             await ExecuteCli("https", "File transfer now uses HTTP", "off");
@@ -406,6 +410,11 @@ namespace MegaBulkUploader.Modules.Clients
             megaLogger.LogInformation("Cleaning up...");
 
             await DeleteCache();
+        }
+
+        public void Dispose()
+        {
+	        DeleteCache().Wait();
         }
     }
 }
