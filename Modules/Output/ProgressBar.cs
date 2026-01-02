@@ -1,6 +1,4 @@
-﻿using System;
-using System.Text;
-using MegaBulkUploader.Modules.Clients;
+﻿using MegaBulkUploader.Modules.Clients;
 
 namespace MegaBulkUploader.Modules.Output
 {
@@ -15,7 +13,7 @@ namespace MegaBulkUploader.Modules.Output
         private const string Animation = @"|/-\";
 
         private readonly Timer _timer;
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         private double _currentProgress;
         private string _currentText = string.Empty;
@@ -96,6 +94,8 @@ namespace MegaBulkUploader.Modules.Output
         {
             lock (_lock)
             {
+	            Console.CursorVisible = false;
+
                 int oldLines = _currentText.Split('\n').Length;
 
                 for (int i = 0; i < oldLines; i++)
@@ -107,6 +107,7 @@ namespace MegaBulkUploader.Modules.Output
 
                 Console.WriteLine(text);
                 _currentText = text;
+
                 Console.CursorVisible = true;
             }
         }

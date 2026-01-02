@@ -34,20 +34,14 @@ namespace MegaBulkUploader.Modules.Misc
         public static string GetCli()
         {
             if (OperatingSystem.IsWindows())
-            {
-                return $@"{AppDomain.CurrentDomain.BaseDirectory}cli{(Environment.Is64BitOperatingSystem ? "\\x64" : "\\x86")}\MEGAClient.exe";
-            }
+	            return $@"{AppDomain.CurrentDomain.BaseDirectory}cli{(Environment.Is64BitOperatingSystem ? "\\x64" : "\\x86")}\MEGAClient.exe";
 
-            if (OperatingSystem.IsLinux())
-            {
-                return "/usr/bin/mega-exec";
-            }
-
-            throw new NotSupportedException("Unsupported OS");
+            return OperatingSystem.IsLinux() ? "/usr/bin/mega-exec" : throw new NotSupportedException("Unsupported OS");
         }
 
         public static void Cleanup(object? o, EventArgs eventArgs)
         {
+	        Console.CursorVisible = true;
             Console.ResetColor();
             
             Log logger = new("Init");

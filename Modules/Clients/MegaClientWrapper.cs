@@ -1,19 +1,37 @@
 ﻿using CG.Web.MegaApiClient;
 using MegaBulkUploader.Modules.Output;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 
 namespace MegaBulkUploader.Modules.Clients
 {
-	public class MegaClientWrapper
+	public sealed class MegaThreeException() : Exception("Mega error three occurred.");
+
+	public class MegaClientWrapper : IDisposable
 	{
-		private static readonly MegaApiClient MegaApiClient = new();
+		private static readonly MegaApiClient MegaApiClient = new(new Options(bufferSize: 41943040, reportProgressChunkSize: 41943040L));
 		private static MegaCliWrapper _megaCliWrapper = null!;
+		public event Action? OnMegaThreeError;
 
 		public MegaClientWrapper(MegaCliWrapper cli)
 		{
 			Log log = new("MegaClient");
 			_megaCliWrapper = cli;
-			MegaApiClient.ApiRequestFailed += (_, failed) => log.LogError(failed.ResponseJson);
+			MegaApiClient.ApiRequestFailed += (_, failed) =>
+			{
+				log.LogError(JsonSerializer.Serialize(failed, new JsonSerializerOptions
+				{
+					Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+					WriteIndented = true,
+					IndentCharacter = '\t',
+					IndentSize = 1
+				}));
+				if (failed.ResponseJson.Contains("-3", StringComparison.InvariantCulture))
+				{
+					OnMegaThreeError?.Invoke();
+				}
+			};
 		}
 
 		public async Task Login(string username, string password)
@@ -65,7 +83,7 @@ namespace MegaBulkUploader.Modules.Clients
 				IProgress<double> progress = new Progress<double>(progressValue =>
 				{
 					MegaCliWrapper.TransferData updatedTransfer = transfer with { Progress = Math.Round(progressValue, 2, MidpointRounding.ToEven) };
-					ValueTuple<MegaCliWrapper.TransferData, int, int> payload = new(updatedTransfer, uploadedCount, files.Count);
+					ValueTuple<MegaCliWrapper.TransferData, int, int> payload = new(updatedTransfer, uploadedCount + 1, files.Count);
 
 					progressBar.Report(payload);
 				});
@@ -81,5 +99,11 @@ namespace MegaBulkUploader.Modules.Clients
 		}
 
 		public async Task UploadFile(string filePath) => await UploadFiles(Path.GetFileNameWithoutExtension(filePath), [filePath]);
+
+		public void Dispose()
+		{
+			GC.SuppressFinalize(this);
+			MegaApiClient.Logout();
+		}
 	}
 }

@@ -34,12 +34,14 @@ namespace MegaBulkUploader
         
         static void Main(string[] args)
         {
+            Console.ResetColor();
+            Console.CursorVisible = true;
             MegaCliWrapper.DeleteCache().Wait();
 
             AppDomain.CurrentDomain.ProcessExit += StaticModules.Cleanup;
             Console.CancelKeyPress += StaticModules.Cleanup;
 
-            if (args.Length == 0) args = ["--help"];
+			if (args.Length == 0) args = ["--help"];
 
             CliParse parser = new(args, aliases: new Dictionary<string, string>
             {

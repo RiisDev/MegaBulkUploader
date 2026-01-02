@@ -2,9 +2,26 @@
 {
     public class Log(string categoryName)
     {
-        private readonly object _lock = new();
-        
-        public void LogInformation(string message)
+        private readonly Lock _lock = new();
+
+		public void LogWarning(string message)
+		{
+			lock (_lock)
+			{
+				Console.Write($"[{DateTime.Now:HH:mm:ss}] ");
+				Console.Write("[");
+				Console.ForegroundColor = ConsoleColor.White;
+				Console.Write(categoryName);
+				Console.ResetColor();
+				Console.Write("] ");
+				Console.ForegroundColor = ConsoleColor.Yellow;
+				Console.Write("info");
+				Console.ResetColor();
+				Console.WriteLine($": {message}");
+			}
+		}
+
+		public void LogInformation(string message)
         {
             lock (_lock)
             {

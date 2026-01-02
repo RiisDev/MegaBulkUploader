@@ -175,55 +175,66 @@ namespace MegaBulkUploader.Modules.Clients
             if (settings.OutputBbFile)
                 await File.AppendAllTextAsync(settings.BbOutputFile, $"[SPOILER=\"{megaDirectory} - {FormatBytes(totalDirectoryBytes)} - {totalFiles} Videos - {sections.Count} Folders\"]\n");
 
-            int index = 0;
-            foreach (List<string> section in sections)
-            {
-                index++;
-                if (settings.SectionIndex > index) continue;
+			int index = 0;
+			foreach (List<string> section in sections)
+			{
+				index++;
+				if (settings.SectionIndex > index) continue;
 
-                logger.LogInformation($"Starting section: {sections.IndexOf(section)+1}");
+				logger.LogInformation($"Starting section: {sections.IndexOf(section) + 1}");
 
-                Retry:
-                (string email, string password, string token) = ("", "", "");
+				bool success = false;
+				string logState = "";
+				while (!success)
+				{
+					(string email, string password, string token) = ("", "", "");
 
-                try { (email, password, token) = await MailClient.CreateEmail(); }
-                catch { new Log("EmailClient").LogError("Failed to create email, retrying..."); goto Retry; }
+					MegaCliWrapper? wrapper = null;
+					MegaClientWrapper? client = null;
 
-                if (new[] { email, password, token }.Any(string.IsNullOrEmpty))
-                { new Log("EmailClient").LogError("Failed to create email 0x1, retrying..."); goto Retry; }
+					try
+					{
+						logState = "EmailClient";
+						(email, password, token) = await MailClient.CreateEmail();
+						if (new[] { email, password, token }.Any(string.IsNullOrEmpty)) throw new InvalidOperationException("Email creation returned empty values.");
 
-                MegaCliWrapper wrapper = new(token, section.Count);
-                try { await wrapper.Register(email, password, Program.RandomString(5), megaDirectory); }
-                catch { new Log("EmailClient").LogError("Failed to register account, retrying..."); goto Retry; }
+						wrapper = new MegaCliWrapper(token, section.Count);
+						client = new MegaClientWrapper(wrapper);
 
-                if (settings.UseOldUpload)
-                {
-	                try { await wrapper.UploadFiles(section, megaDirectory, settings.UploadStreams); }
-	                catch (Exception ex) { logger.LogError($"An error occured while uploading files, please report to developer.{ex}"); continue; }
+						client.OnMegaThreeError += () => throw new MegaThreeException();
 
-	                try { await File.AppendAllTextAsync(settings.OutputFile, $"Login: {email} - {password}\nDirectory: {megaDirectory}\nTotal Size:{FormatBytes(GetTotalFileSize(section))}\nTotal Files:{section.Count}\nUrl: {Program.Exported.Last()}\n-{string.Join("\n- ", section.Select(Path.GetFileName))}\n\n"); }
-	                catch (Exception ex) { new Log("UploadLog").LogError($"An error occured while writing to log, please report to developer.{ex}"); }
+						await wrapper.Register(email, password, Program.RandomString(5), megaDirectory);
+
+						if (settings.UseOldUpload)
+						{
+							logState = "MegaCliDevException";
+							await wrapper.UploadFiles(section, megaDirectory, settings.UploadStreams);
+						}
+						else
+						{
+							logState = "MegaClientWrapperDevException";
+							MegaCliWrapper.KillMegaProcesses();
+							await MegaCliWrapper.DeleteCache();
+
+							await client.Login(email, password);
+							await client.UploadFiles(megaDirectory, section);
+						}
+
+						success = true;
+					}
+					catch (MegaThreeException) { logger.LogWarning("MegaErrorThree occurred, retrying section..."); client?.Dispose(); wrapper?.Dispose(); }
+					catch (Exception ex) { new Log(logState).LogError($"Unexpected error, retrying... {ex}"); }
+					finally { wrapper?.Dispose(); client?.Dispose(); }
 				}
-                else
-                {
-                    MegaCliWrapper.KillMegaProcesses();
-                    await MegaCliWrapper.DeleteCache();
-					
-                    MegaClientWrapper client = new(wrapper);
-                    await client.Login(email, password);
-                    await client.UploadFiles(megaDirectory, section);
-                }
-				
-                wrapper.Dispose();
 
 				if (!settings.OutputBbFile) continue;
 
-                try { await WriteBbLogAsync(Program.Exported.Last(), section, GetTotalFileSize(section), settings.BbOutputFile); }
-                catch (Exception ex) { new Log("UploadLog").LogError($"An error occured while writing to BBlog, please report to developer.{ex}"); }
+				try { await WriteBbLogAsync(Program.Exported.Last(), section, GetTotalFileSize(section), settings.BbOutputFile); }
+				catch (Exception ex) { new Log("UploadLog").LogError($"Failed writing BBlog.{ex}"); }
+			}
 
-            }
 
-            if (settings.OutputBbFile)
+			if (settings.OutputBbFile)
                 await File.AppendAllTextAsync(settings.BbOutputFile, "\n[/SPOILER]");
 
             new Log("Completed").LogInformation($"Exported links: {string.Join(", ", Program.Exported)}");
