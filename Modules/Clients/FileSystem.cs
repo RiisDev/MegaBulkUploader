@@ -123,11 +123,16 @@ namespace MegaBulkUploader.Modules.Clients
             logger.LogInformation($"- BbOutputFile: '{settings.BbOutputFile}'");
             logger.LogInformation($"- OutputBbFile: {settings.OutputBbFile}");
 
+            FileAttributes? attributes = null!;
 
-            FileAttributes attributes = File.GetAttributes(settings.Path);
+			if (!settings.Path.Contains('|'))
+				attributes = File.GetAttributes(settings.Path);
+
             List<List<string>> sections = [];
 
-            if (settings.Path.Contains('|'))
+            long totalDirectoryBytes = 0;
+
+			if (settings.Path.Contains('|'))
             {
                 string[] files = settings.Path.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 				long currentSectionSize = 0;
@@ -155,10 +160,10 @@ namespace MegaBulkUploader.Modules.Clients
 
 					currentSection.Add(file);
 					currentSectionSize += fileInfo.Length;
+					totalDirectoryBytes += fileInfo.Length;
 				}
 			}
-            else if (attributes.HasFlag(FileAttributes.Directory))
-                sections = GetFolderStructure(settings.Path, settings.SplitSize);
+            else if (attributes.HasValue && attributes.Value.HasFlag(FileAttributes.Directory)) sections = GetFolderStructure(settings.Path, settings.SplitSize);
             else
             {
                 if (new FileInfo(settings.Path).Length > settings.SplitSize)
@@ -166,11 +171,14 @@ namespace MegaBulkUploader.Modules.Clients
                 sections = [[settings.Path]];
             }
 
-            string megaDirectory = Path.GetFileName(settings.Path.TrimEnd(Path.DirectorySeparatorChar));
+            string megaDirectory = settings.Path.Contains('|') ? "Uploader" : Path.GetFileName(settings.Path.TrimEnd(Path.DirectorySeparatorChar));
 
-            long totalDirectoryBytes = attributes.HasFlag(FileAttributes.Directory) ? new DirectoryInfo(settings.Path).GetDirectorySize() : new FileInfo(settings.Path).Length;
+			totalDirectoryBytes = attributes.HasValue && attributes.Value.HasFlag(FileAttributes.Directory) 
+	            ? new DirectoryInfo(settings.Path).GetDirectorySize() 
+	            : settings.Path.Contains('|') ? totalDirectoryBytes
+				: new FileInfo(settings.Path).Length;
 
-            int totalFiles = sections.Sum(x => x.Count);
+			int totalFiles = sections.Sum(x => x.Count);
 
             if (settings.OutputBbFile)
                 await File.AppendAllTextAsync(settings.BbOutputFile, $"[SPOILER=\"{megaDirectory} - {FormatBytes(totalDirectoryBytes)} - {totalFiles} Videos - {sections.Count} Folders\"]\n");
@@ -181,7 +189,7 @@ namespace MegaBulkUploader.Modules.Clients
 				index++;
 				if (settings.SectionIndex > index) continue;
 
-				logger.LogInformation($"Starting section: {sections.IndexOf(section) + 1}");
+				logger.LogInformation($"Starting section: {sections.IndexOf(section) + 1} / {sections.Count}");
 
 				bool success = false;
 				string logState = "";
