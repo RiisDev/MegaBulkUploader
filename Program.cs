@@ -13,7 +13,7 @@ namespace MegaBulkUploader
 
         private const string HelpString = """
                                           Usage:
-                                            dotnet app.dll <pathToUpload> [options]
+                                            dotnet MegaBulkUploader.dll <pathToUpload> [options]
 
                                           Arguments:
                                             pathToUpload                Required. Path to the file or directory to upload.
